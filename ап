@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Калькулятор панелей</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script
+      src="https://unpkg.com/react@18/umd/react.development.js"crossorigin
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"crossorigin
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+
+  <body class="bg-gray-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState } = React;
+
+      // 🧩 1. ОПРЕДЕЛЕНИЕ ВСЕХ ТЕХНОЛОГИЙ
+      const panelTypes = {
+        // --- Заливка ---
+        "Заливка": {
+  formula: (area, inputs) => {
+    // Основная формула
+    if (area < 0.15) return 75;
+    if (area < 0.5) return area * 500;
+    if (area < 1) return 130;
+    return area * 130;
+  },
+
+  // 🔹 Надбавки (пока логика простая, чтобы работали интерфейсно)
+  extras: [
+        { name: "Полноцвет на фольге", percent: 0.2 },
+	{ name: "Скотч (50€/м²)", flat: 50 },
+        { name: "Фольга", percent: 0.1 },
+        { name: "Заострённые углы", percent: 0.15 },
+        { name: "Конгрев", flat: 130 },
+  ],
+},
+
+        // --- Kromex ---
+        "Kromex": {
+          formula: (area) => {
+            const a = Math.max(area, 0.2);
+            return a <= 0.5
+              ? a * 10000 * 0.2
+              : (1250 * a + 200) * 1.2;
+          },
+          extras: [
+            { name: "Цифровая печать", percent: 0.15 },
+            { name: "Скотч (50€/м²)", flat: 50 },
+            { name: "2D", flat: 200 },
+            { name: "3D", flat: 250 },
+          ],
+        },
+
+        // --- EcoDomes ---
+        "EcoDomes": {
+          formula: (area) => {
+            const a = Math.max(area, 0.2);
+            return a <= 0.5
+              ? a * 10000 * 0.15
+              : 850 * a + 150;
+          },
+          extras: [
+            { name: "Цифровая печать", percent: 0.15 },
+            { name: "Скотч (50€/м²)", flat: 50 },
+            { name: "Эффект купола", percent: 0.2 },
+          ],
+        },
+
+        // --- Самоклеющиеся панели ---
+        "Самоклеющиеся панели": {
+          formula: (area) => 150 * area + 150,
+          extras: [
+            {
+              name: "Пуклевочный штамп",
+              custom: (onePanelArea) => {
+                if (onePanelArea < 0.01) return 80;
+                if (onePanelArea < 0.02) return 100;
+                return 130;
+              },
+            },
+          ],
+        },
+
+ // --- Гибкие клавиатуры ---
+"Гибкие клавиатуры": {
+  // 🔹 формула расчёта стоимости гибких клавиатур
+  formula: (area, inputs) => {
+    const onePanelArea = area / (inputs.qty || 1);
+
+    // ---- Подготовительные работы ----
+    const prepBase = 296;
+
+    // 💠 Пуклевочный штамп для кнопок (если включён чекбокс)
+    const punchButtons = inputs.hasButtonStamp 
+      ? (onePanelArea < 0.01 ? 80 : onePanelArea < 0.2 ? 100 : 150)
+      : 0;
+
+    // 💠 Пуклевочный штамп для светодиодов
+    const ledStamp = inputs.hasLedStamp ? 50 : 0;
+
+    // 💠 Стоимость кнопок (по количеству)
+    const buttonCost = (inputs.buttons || 0) * 5;
+
+    // 💠 Общая сумма подготовительных работ
+    const prepTotal = prepBase + punchButtons + ledStamp + buttonCost;
+
+    // ---- Изготовление ----
+    const fabricationBase = 300 * area + 200;
+    const membraneCost = (inputs.membranes || 0) * 0.25;
+    const ledCost = (inputs.leds || 0) * 1;
+
+    // 💠 Надбавки для изготовления
+    let fabricationTotal = fabricationBase + membraneCost + ledCost;
+    if (inputs.autotex) fabricationTotal *= 1.3;
+    if (inputs.reverseOutput) fabricationTotal *= 1.2;
+    if (inputs.flexCable) fabricationTotal += area * 50;
+
+    // ---- Общая сумма ----
+    const total = prepTotal + fabricationTotal;
+    return { prepTotal, fabricationTotal, total };
+  },
+  extras: [],
+},
+      };
+
+      // 🎛️ 2. КОМПОНЕНТ ОСНОВНОГО КАЛЬКУЛЯТОРА
+      function PanelCalculator() {
+        // ---- состояние ----
+        const [tech, setTech] = useState("Kromex");
+        const [panelCount,setPanelCount] = useState(1);
+        const [panels, setPanels] = useState([
+          {
+            width: "",
+            height: "",
+            qty: "",
+            extras: [],
+            buttons: "",
+            leds: "",
+            membranes: "",
+            colours:" ",
+            hasLedStamp: false,
+            hasButtonStamp: false,
+            autotex: false,
+            reverseOutput: false,
+            flexCable: false,
+          },
+        ]);
+
+        // ---- обновление данных ----
+        const handlePanelChange = (index, field, value) => {
+          const updated = [...panels];
+          updated[index] = { ...updated[index], [field]: value };
+          setPanels(updated);
+        };
+
+        const handleExtraToggle = (panelIndex, extraName) => {
+          const updated = [...panels];
+          const extras = new Set(updated[panelIndex].extras);
+          extras.has(extraName)
+            ? extras.delete(extraName)
+            : extras.add(extraName);
+          updated[panelIndex].extras = Array.from(extras);
+          setPanels(updated);
+        };
+
+        const changePanelCount = (count) => {
+          setPanelCount(count);
+          setPanels(
+            Array(count)
+              .fill()
+              .map(() => ({
+                width: "",
+                height: "",
+                qty: "",
+                extras: [],
+                buttons: "",
+                leds: "",
+                membranes: "",
+                hasLedStamp: false,
+                hasButtonStamp: false,
+                autotex: false,
+                reverseOutput: false,
+                flexCable: false,
+              }))
+          );
+        };
+
+        const clearAll = () => {
+          changePanelCount(1);
+        };
+
+        // 🧮 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ РАСЧЁТА
+        const calculatePanelPrice = (panel) => {
+          const { formula, extras } = panelTypes[tech];
+          const width = parseFloat(panel.width) || 0;
+          const height = parseFloat(panel.height) || 0;
+          const qty = parseFloat(panel.qty) || 0;
+          const onePanelArea = (width / 1000) * (height / 1000);
+          const totalArea = onePanelArea * qty;
+          if (totalArea <= 0)
+            return { prep: 0, fab: 0, total: 0 };
+
+          if (tech === "Гибкие клавиатуры") {
+            return formula(totalArea, {
+              qty,
+              buttons: parseFloat(panel.buttons) || 0,
+              leds: parseFloat(panel.leds) || 0,
+              membranes: parseFloat(panel.membranes) || 0,
+              hasLedStamp: panel.hasLedStamp,
+	      hasButtonStamp: panel.hasButtonStamp,
+              autotex: panel.autotex,
+              reverseOutput: panel.reverseOutput,
+              flexCable: panel.flexCable,
+            });
+          }
+
+         let cost = formula(totalArea);
+
+// безопасно перебираем выбранные дополнительные опции
+panel.extras.forEach((extraName) => {
+  const extra = extras.find((e) => e.name === extraName);
+  if (!extra) return;
+
+  // процентные надбавки (например +15%)
+  if (extra.percent) {
+    cost += cost * extra.percent;
+  }
+
+  // плоская ставка, привязанная к площади (flat — как 50 €/м²)
+  if (extra.flat) {
+    cost += totalArea * extra.flat;
+  }
+
+  // пользовательская функция (custom) — вызываем с (area, panel)
+  if (extra.custom) {
+    try {
+      const add = extra.custom(totalArea, panel);
+      // Защита: если custom вернул не число — игнорируем
+      if (typeof add === "number" && !isNaN(add)) {
+        cost += add;
+      }
+    } catch (err) {
+      console.error("Ошибка при вычислении extra.custom для", extraName, err);
+      // не прекращаем выполнение — просто игнорируем ошибку
+    }
+  }
+});
+
+// 🔹 автоматическая надбавка за количество цветов (только для Заливки)
+if (panel.tech === "Заливка") {
+  const colours = Number(panel.colours) || 0;
+  if (colours > 3) {
+    cost += totalArea * 0.1 * (colours - 3);
+  }
+}
+
+return { prep: 0, fab: 0, total: cost };
+}
+
+        const calculateTotal = () =>
+          panels.reduce(
+            (sum, p) => sum + calculatePanelPrice(p).total,
+            0
+          );
+
+        // 🖼️ 4. ОТОБРАЖЕНИЕ ИНТЕРФЕЙСА
+        return (
+          <div className="p-6 max-w-5xl mx-auto bg-gray-100 min-h-screen">
+            <h1 className="text-3xl font-bold mb-6 text-center">
+              Калькулятор панелей
+            </h1>
+
+            {/* --- выбор технологии и количества панелей --- */}
+            <div className="mb-6 flex flex-col sm:flex-row gap-4 justify-center">
+              <div>
+                <label className="font-semibold mr-2">
+                  Технология:
+                </label>
+                <select
+                  value={tech}onChange={(e) => setTech(e.target.value)}
+                  className="border rounded p-2"
+                >
+                  {Object.keys(panelTypes).map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold mr-2">
+                  Количество панелей:
+                </label>
+                <select
+                  value={panelCount}
+                  onChange={(e) =>
+                    changePanelCount(parseInt(e.target.value))
+                  }
+                  className="border rounded p-2"
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={clearAll}
+                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
+              >
+                Очистить всё
+              </button>
+            </div>
+
+            {/* --- блоки панелей --- */}
+            {panels.map((panel, i) => {
+              const width = parseFloat(panel.width) || 0;
+              const height = parseFloat(panel.height) || 0;
+              const qty = parseFloat(panel.qty) || 0;
+              const onePanelArea =
+                (width / 1000) * (height / 1000);
+              const totalArea = onePanelArea * qty;
+              const {
+                prepTotal,
+                fabricationTotal,
+                total,
+              } = calculatePanelPrice(panel);
+
+              return (
+                <div
+                  key={i}
+                  className="bg-white p-4 rounded-2xl shadow mb-4"
+                >
+                  <h2 className="text-xl font-semibold mb-3">
+                    Панель {i + 1}
+                  </h2>
+
+                  {/* размеры и количество */}
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <input
+                      type="number"
+                      placeholder="Длина (мм)"
+                      value={panel.width}
+                      onChange={(e) =>
+                        handlePanelChange(
+                          i,
+                          "width",
+                          e.target.value
+                        )
+                      }
+                      className="border p-2 rounded"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Ширина (мм)"
+                      value={panel.height}
+                      onChange={(e) =>
+                        handlePanelChange(
+                          i,
+                          "height",
+                          e.target.value
+                        )
+                      }
+                      className="border p-2 rounded"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Кол-во"
+                      value={panel.qty}
+                      onChange={(e) =>
+                        handlePanelChange(
+                          i,
+                          "qty",
+                          e.target.value
+                        )
+                      }
+                      className="border p-2 rounded"
+                    />
+                  </div>
+
+                  {/* --- ОСОБЫЙ БЛОК: ГИБКИЕ КЛАВИАТУРЫ --- */}
+                  {tech === "Гибкие клавиатуры" && (
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+
+    {/* 🔹 Подготовительные работы */}
+    <div className="bg-blue-50 p-4 rounded-2xl shadow-inner">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-blue-700">
+          Подготовительные работы
+        </h3>{/* 🔽 Стрелка для сворачивания */}
+        <span className="cursor-pointer text-blue-600 text-lg">▼</span>
+      </div>
+
+      <div className="space-y-2 text-sm">
+
+        {/* Пуклевочный штамп для кнопок */}
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={panel.hasButtonStamp}
+            onChange={(e) =>
+              handlePanelChange(i, "hasButtonStamp", e.target.checked)
+            }
+          />
+          Пуклевочный штамп для кнопок (80–150 €)
+        </label>
+
+        {/* Пуклевочный штамп для светодиодов */}
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={panel.hasLedStamp}
+            onChange={(e) =>
+              handlePanelChange(i, "hasLedStamp", e.target.checked)
+            }
+          />
+          Пуклевочный штамп для светодиодов (+50 €)
+        </label>
+
+        {/* Кнопки */}
+        <label className="flex items-center gap-1 mt-2">
+          <span>Кнопки:</span>
+          <input
+            type="number"
+            value={panel.buttons}
+            onChange={(e) =>
+              handlePanelChange(i, "buttons", e.target.value)
+            }
+            className="w-20 border rounded p-1"
+          />
+          <span>× 5 €/шт</span>
+        </label>
+      </div>
+
+      <p className="text-xs text-blue-600 mt-3">
+        * Стоимость пуклевочного штампа для кнопок рассчитывается
+        автоматически в зависимости от площади клавиатуры.
+      </p>
+    </div>
+
+    {/* 🔸 Изготовление */}
+    <div className="bg-amber-50 p-4 rounded-2xl shadow-inner">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-amber-800">
+          Изготовление
+        </h3>
+        {/* 🔽 Стрелка для сворачивания */}
+        <span className="cursor-pointer text-amber-700 text-lg">▼</span>
+      </div>
+
+      <div className="space-y-2 text-sm">
+
+        {/* Светодиоды */}
+        <label className="flex items-center gap-1">
+          <span>Светодиоды:</span>
+          <input
+            type="number"
+            value={panel.leds}
+            onChange={(e) =>
+              handlePanelChange(i, "leds", e.target.value)
+            }
+            className="w-20 border rounded p-1"
+          />
+          <span>× 1 €/шт</span>
+        </label>
+
+        {/* Мембраны */}
+        <label className="flex items-center gap-1">
+          <span>Мембраны:</span>
+          <input
+            type="number"
+            value={panel.membranes}
+            onChange={(e) =>
+              handlePanelChange(i, "membranes", e.target.value)
+            }
+            className="w-20 border rounded p-1"
+          />
+          <span>× 0.25 €/шт</span>
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={panel.autotex}
+            onChange={(e) =>
+              handlePanelChange(i, "autotex", e.target.checked)
+            }
+          />
+          Пластик Autotex (+30%)
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={panel.reverseOutput}
+            onChange={(e) =>
+              handlePanelChange(i, "reverseOutput", e.target.checked)
+            }
+          />
+          Вывод электрики с обратной стороны (+20%)
+        </label>
+
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={panel.flexCable}
+            onChange={(e) =>
+              handlePanelChange(i, "flexCable", e.target.checked)
+            }
+          />
+          Изготовление шлейфа (+50 €/м²)
+        </label>
+      </div>
+    </div>
+  </div>
+)}
+{/* --- Дополнительное поле для "Заливки" --- */}
+{tech === "Заливка" && (
+  <div className="mb-3">
+    <label className="block text-sm">Количество цветов:</label>
+    <input
+      type="number"
+      min="1"
+      value={panel.colours}
+      onChange={(e) => handlePanelChange(i, "colours", e.target.value)}
+      className="border rounded p-1 w-24"
+    />
+  </div>
+)}                  {/* --- стандартные надбавки для других технологий --- */}
+                  {panelTypes[tech].extras.length > 0 && (
+                    <div className="flex flex-wrap gap-3 mb-2">
+                      {panelTypes[tech].extras.map((extra) => (
+                        <label
+                          key={extra.name}
+                          className={`flex items-center gap-1 p-1 rounded ${
+                            panel.extras.includes(extra.name)
+                              ? "bg-blue-100"
+                              : ""
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={panel.extras.includes(
+                              extra.name
+                            )}
+                            onChange={() =>
+                              handleExtraToggle(
+                                i,
+                                extra.name
+                              )
+                            }
+                          />
+                          {extra.name}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* информация о площади */}
+                  <div className="text-sm text-gray-600 mb-2">
+                    Площадь одной панели:{" "}
+                    {onePanelArea.toFixed(4)} м² | Общая
+                    площадь: {totalArea.toFixed(4)} м²
+                  </div>
+
+                  {/* итог стоимости */}
+                  {tech === "Гибкие клавиатуры" ? (
+                    <div className="space-y-1">
+                      <div>
+                        Подготовительные работы:{" "}
+                        <b>{prepTotal?.toFixed(2)} €</b>
+                      </div>
+                      <div>
+                        Изготовление:{" "}
+                        <b>{fabricationTotal?.toFixed(2)} €</b>
+                      </div>
+                      <div className="font-semibold text-lg mt-1">
+                        Итого: {total?.toFixed(2)} €
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="font-semibold mt-2">
+                      Стоимость панели: {total?.toFixed(2)} €
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* --- общий итог --- */}
+            <div className="mt-6 p-4 bg-white rounded-2xl shadow text-2xl font-bold text-center">
+              Общая стоимость: {calculateTotal().toFixed(2)} €
+            </div>
+          </div>
+        );
+      }
+
+      // 🚀 5. РЕНДЕР КОМПОНЕНТА
+      ReactDOM.createRoot(document.getElementById("root")).render(
+        <PanelCalculator />
+      );
+    </script>
+  </body>
+</html>
